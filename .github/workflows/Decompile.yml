@@ -1,0 +1,63 @@
+name: Decompile game.droid
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'assets/**/game.droid'
+
+jobs:
+  decompile:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Clone UndertaleModTool
+        run: git clone --depth 1 https://github.com/UnderminersTeam/UndertaleModTool.git
+
+      - name: Build UndertaleModCli
+        run: dotnet build UndertaleModTool/UndertaleModCli/UndertaleModCli.csproj -c Release -o cli-build
+
+      - name: Find game.droid in assets/
+        id: find
+        run: |
+          FILE=$(find assets -type f -name "game.droid" | head -n 1)
+          if [ -z "$FILE" ]; then
+            echo "No game.droid found under assets/"
+            exit 1
+          fi
+          echo "path=$FILE" >> "$GITHUB_OUTPUT"
+
+      - name: Decompile code with ExportAllCode.csx
+        run: |
+          mkdir -p decompiled
+          dotnet cli-build/UndertaleModCli.dll load "${{ steps.find.outputs.path }}" \
+            -s UndertaleModTool/UndertaleModTool/Scripts/Exporters/ExportAllCode.csx \
+            -o decompiled/output.droid
+
+      - name: Locate exported GML output
+        run: |
+          # ExportAllCode.csx writes to a folder next to the loaded file, normally
+          # named "<datafilename>_ExportedCode" - copy it somewhere stable
+          SRC_DIR=$(dirname "${{ steps.find.outputs.path }}")
+          EXPORT_DIR=$(find "$SRC_DIR" -maxdepth 1 -type d -iname "*ExportedCode*" | head -n 1)
+          mkdir -p decompiled_code
+          if [ -n "$EXPORT_DIR" ]; then
+            cp -r "$EXPORT_DIR"/. decompiled_code/
+          else
+            echo "Could not locate exported code folder, check script output paths"
+            exit 1
+          fi
+
+      - name: Upload decompiled code as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: decompiled-gml-code
+          path: decompiled_code/
+
