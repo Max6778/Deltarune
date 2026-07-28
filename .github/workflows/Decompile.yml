@@ -38,7 +38,7 @@ jobs:
         run: |
           mkdir -p decompiled
           dotnet cli-build/UndertaleModCli.dll load "${{ steps.find.outputs.path }}" \
-            -s UndertaleModTool/UndertaleModTool/Scripts/Exporters/ExportAllCode.csx \
+            -s "UndertaleModTool/UndertaleModTool/Scripts/Resource Exporters/ExportAllCode.csx" \
             -o decompiled/output.droid
 
       - name: Locate exported GML output
