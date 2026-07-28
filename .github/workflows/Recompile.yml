@@ -24,8 +24,8 @@ jobs:
         with:
           dotnet-version: '8.0.x'
 
-      - name: Clone UndertaleModTool
-        run: git clone --depth 1 https://github.com/UnderminersTeam/UndertaleModTool.git
+      - name: Clone UndertaleModTool (with submodules)
+        run: git clone --depth 1 --recurse-submodules --shallow-submodules https://github.com/UnderminersTeam/UndertaleModTool.git
 
       - name: Build UndertaleModCli
         run: dotnet build UndertaleModTool/UndertaleModCli/UndertaleModCli.csproj -c Release -o cli-build
@@ -49,4 +49,3 @@ jobs:
         with:
           name: patched-game-droid
           path: output/game.droid
-
