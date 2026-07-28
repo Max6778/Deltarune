@@ -35,9 +35,9 @@ jobs:
           echo "path=$FILE" >> "$GITHUB_OUTPUT"
 
       # Each exporter script normally asks (via a GUI dialog / stdin prompt) where
-      # to save its output. That doesn't work headless, so we patch every script
-      # to write straight into its own subfolder under mod_export/ instead.
-      - name: Patch exporter scripts to skip interactive folder prompts
+      # to save its output, and some also ask Y/N confirmation questions. Neither
+      # works headless, so we patch every script to skip both kinds of prompts.
+      - name: Patch exporter scripts to skip interactive prompts
         run: |
           mkdir -p mod_export/code mod_export/sounds mod_export/sprites mod_export/backgrounds mod_export/fonts
 
@@ -60,6 +60,12 @@ jobs:
               echo "Patch did not apply to $SCRIPT - its PromptChooseDirectory() call may be named differently, check script contents"
               exit 1
             fi
+
+            # Some scripts (e.g. ExportAllSounds.csx) also ask a Y/N question via
+            # ScriptQuestion(), which reads from stdin. With no interactive stdin
+            # in a runner, this loops forever re-prompting "Invalid input". Force
+            # every such question to auto-answer "yes" so the script proceeds.
+            perl -0777 -pi -e 's/ScriptQuestion\(.*?\)/true/gs' "$SCRIPT"
           done
 
       - name: Run all exporters against game.droid
