@@ -34,6 +34,15 @@ jobs:
           fi
           echo "path=$FILE" >> "$GITHUB_OUTPUT"
 
+      - name: Patch ExportAllCode.csx to skip interactive folder prompt
+        run: |
+          SCRIPT="UndertaleModTool/UndertaleModTool/Scripts/Resource Exporters/ExportAllCode.csx"
+          mkdir -p "$GITHUB_WORKSPACE/decompiled_code"
+          # PromptChooseDirectory() opens a GUI folder picker / reads stdin - neither
+          # works in a headless runner, so replace the call with a fixed path.
+          sed -i "s#PromptChooseDirectory()#\"$GITHUB_WORKSPACE/decompiled_code\"#g" "$SCRIPT"
+          grep -n "decompiled_code" "$SCRIPT" || { echo "Patch did not apply, check script contents"; exit 1; }
+
       - name: Decompile code with ExportAllCode.csx
         run: |
           mkdir -p decompiled
@@ -41,17 +50,10 @@ jobs:
             -s "UndertaleModTool/UndertaleModTool/Scripts/Resource Exporters/ExportAllCode.csx" \
             -o decompiled/output.droid
 
-      - name: Locate exported GML output
+      - name: Verify decompiled output exists
         run: |
-          # ExportAllCode.csx writes to a folder next to the loaded file, normally
-          # named "<datafilename>_ExportedCode" - copy it somewhere stable
-          SRC_DIR=$(dirname "${{ steps.find.outputs.path }}")
-          EXPORT_DIR=$(find "$SRC_DIR" -maxdepth 1 -type d -iname "*ExportedCode*" | head -n 1)
-          mkdir -p decompiled_code
-          if [ -n "$EXPORT_DIR" ]; then
-            cp -r "$EXPORT_DIR"/. decompiled_code/
-          else
-            echo "Could not locate exported code folder, check script output paths"
+          if [ -z "$(ls -A decompiled_code 2>/dev/null)" ]; then
+            echo "decompiled_code is empty - the script did not export anything"
             exit 1
           fi
 
