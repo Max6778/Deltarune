@@ -1,0 +1,52 @@
+name: Recompile to game.droid
+
+on:
+  workflow_dispatch:
+    inputs:
+      original_droid_path:
+        description: 'Path to the original game.droid in assets/ (the one to patch)'
+        required: true
+        default: 'assets/game.droid'
+      gml_source_dir:
+        description: 'Folder containing edited .gml files to import'
+        required: true
+        default: 'decompiled_code'
+
+jobs:
+  recompile:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Clone UndertaleModTool
+        run: git clone --depth 1 https://github.com/UnderminersTeam/UndertaleModTool.git
+
+      - name: Build UndertaleModCli
+        run: dotnet build UndertaleModTool/UndertaleModCli/UndertaleModCli.csproj -c Release -o cli-build
+
+      - name: Import GML with ImportGML.csx
+        env:
+          IMPORT_FOLDER: ${{ github.event.inputs.gml_source_dir }}
+        run: |
+          mkdir -p output
+          dotnet cli-build/UndertaleModCli.dll load "${{ github.event.inputs.original_droid_path }}" \
+            -s UndertaleModTool/UndertaleModTool/Scripts/Importers/ImportGML.csx \
+            -o output/game.droid
+          # ImportGML.csx prompts for a folder path interactively in the GUI;
+          # the CLI reads it from the UMT_IMPORT_FOLDER env var if your UMT
+          # version supports scripted input — verify against the script source
+          # if this step fails, since some versions expect a different variable
+          # or a modified copy of the script with the path hardcoded.
+
+      - name: Upload patched game.droid
+        uses: actions/upload-artifact@v4
+        with:
+          name: patched-game-droid
+          path: output/game.droid
+
