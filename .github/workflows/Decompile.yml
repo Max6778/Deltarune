@@ -1,4 +1,4 @@
-name: Decompile game.droid
+name: Decompile game.droid (full asset export)
 
 on:
   workflow_dispatch:
@@ -34,31 +34,60 @@ jobs:
           fi
           echo "path=$FILE" >> "$GITHUB_OUTPUT"
 
-      - name: Patch ExportAllCode.csx to skip interactive folder prompt
+      # Each exporter script normally asks (via a GUI dialog / stdin prompt) where
+      # to save its output. That doesn't work headless, so we patch every script
+      # to write straight into its own subfolder under mod_export/ instead.
+      - name: Patch exporter scripts to skip interactive folder prompts
         run: |
-          SCRIPT="UndertaleModTool/UndertaleModTool/Scripts/Resource Exporters/ExportAllCode.csx"
-          mkdir -p "$GITHUB_WORKSPACE/decompiled_code"
-          # PromptChooseDirectory() opens a GUI folder picker / reads stdin - neither
-          # works in a headless runner, so replace the call with a fixed path.
-          sed -i "s#PromptChooseDirectory()#\"$GITHUB_WORKSPACE/decompiled_code\"#g" "$SCRIPT"
-          grep -n "decompiled_code" "$SCRIPT" || { echo "Patch did not apply, check script contents"; exit 1; }
+          mkdir -p mod_export/code mod_export/sounds mod_export/sprites mod_export/backgrounds mod_export/fonts
 
-      - name: Decompile code with ExportAllCode.csx
+          declare -A SCRIPTS=(
+            ["UndertaleModTool/UndertaleModTool/Scripts/Resource Exporters/ExportAllCode.csx"]="mod_export/code"
+            ["UndertaleModTool/UndertaleModTool/Scripts/Resource Exporters/ExportAllSounds.csx"]="mod_export/sounds"
+            ["UndertaleModTool/UndertaleModTool/Scripts/Resource Exporters/ExportAllSprites.csx"]="mod_export/sprites"
+            ["UndertaleModTool/UndertaleModTool/Scripts/Resource Exporters/ExportAllTilesets.csx"]="mod_export/backgrounds"
+            ["UndertaleModTool/UndertaleModTool/Scripts/Resource Exporters/ExportAllFonts.csx"]="mod_export/fonts"
+          )
+
+          for SCRIPT in "${!SCRIPTS[@]}"; do
+            TARGET="$GITHUB_WORKSPACE/${SCRIPTS[$SCRIPT]}"
+            if [ ! -f "$SCRIPT" ]; then
+              echo "Missing script: $SCRIPT"
+              exit 1
+            fi
+            sed -i "s#PromptChooseDirectory()#\"$TARGET\"#g" "$SCRIPT"
+            if ! grep -q "$TARGET" "$SCRIPT"; then
+              echo "Patch did not apply to $SCRIPT - its PromptChooseDirectory() call may be named differently, check script contents"
+              exit 1
+            fi
+          done
+
+      - name: Run all exporters against game.droid
         run: |
           mkdir -p decompiled
           dotnet cli-build/UndertaleModCli.dll load "${{ steps.find.outputs.path }}" \
             -s "UndertaleModTool/UndertaleModTool/Scripts/Resource Exporters/ExportAllCode.csx" \
+            -s "UndertaleModTool/UndertaleModTool/Scripts/Resource Exporters/ExportAllSounds.csx" \
+            -s "UndertaleModTool/UndertaleModTool/Scripts/Resource Exporters/ExportAllSprites.csx" \
+            -s "UndertaleModTool/UndertaleModTool/Scripts/Resource Exporters/ExportAllTilesets.csx" \
+            -s "UndertaleModTool/UndertaleModTool/Scripts/Resource Exporters/ExportAllFonts.csx" \
             -o decompiled/output.droid
 
-      - name: Verify decompiled output exists
+      - name: Verify exported output exists
         run: |
-          if [ -z "$(ls -A decompiled_code 2>/dev/null)" ]; then
-            echo "decompiled_code is empty - the script did not export anything"
-            exit 1
+          EMPTY=0
+          for DIR in mod_export/code mod_export/sounds mod_export/sprites mod_export/backgrounds mod_export/fonts; do
+            if [ -z "$(ls -A "$DIR" 2>/dev/null)" ]; then
+              echo "Warning: $DIR is empty"
+              EMPTY=1
+            fi
+          done
+          if [ "$EMPTY" = "1" ]; then
+            echo "One or more exporters produced nothing - check the previous step's log for that script's errors"
           fi
 
-      - name: Upload decompiled code as artifact
+      - name: Upload all exported assets as one artifact
         uses: actions/upload-artifact@v4
         with:
-          name: decompiled-gml-code
-          path: decompiled_code/
+          name: deltarune-mod-assets
+          path: mod_export/
