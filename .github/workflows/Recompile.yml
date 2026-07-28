@@ -30,19 +30,19 @@ jobs:
       - name: Build UndertaleModCli
         run: dotnet build UndertaleModTool/UndertaleModCli/UndertaleModCli.csproj -c Release -o cli-build
 
+      - name: Patch ImportGML.csx to skip interactive folder prompt
+        run: |
+          SCRIPT="UndertaleModTool/UndertaleModTool/Scripts/Resource Importers/ImportGML.csx"
+          IMPORT_PATH="$GITHUB_WORKSPACE/${{ github.event.inputs.gml_source_dir }}"
+          sed -i "s#PromptChooseDirectory()#\"$IMPORT_PATH\"#g" "$SCRIPT"
+          grep -n "$IMPORT_PATH" "$SCRIPT" || { echo "Patch did not apply, check script contents"; exit 1; }
+
       - name: Import GML with ImportGML.csx
-        env:
-          IMPORT_FOLDER: ${{ github.event.inputs.gml_source_dir }}
         run: |
           mkdir -p output
           dotnet cli-build/UndertaleModCli.dll load "${{ github.event.inputs.original_droid_path }}" \
             -s "UndertaleModTool/UndertaleModTool/Scripts/Resource Importers/ImportGML.csx" \
             -o output/game.droid
-          # ImportGML.csx prompts for a folder path interactively in the GUI;
-          # the CLI reads it from the UMT_IMPORT_FOLDER env var if your UMT
-          # version supports scripted input — verify against the script source
-          # if this step fails, since some versions expect a different variable
-          # or a modified copy of the script with the path hardcoded.
 
       - name: Upload patched game.droid
         uses: actions/upload-artifact@v4
