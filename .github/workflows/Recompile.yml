@@ -36,7 +36,7 @@ jobs:
         run: |
           mkdir -p output
           dotnet cli-build/UndertaleModCli.dll load "${{ github.event.inputs.original_droid_path }}" \
-            -s UndertaleModTool/UndertaleModTool/Scripts/Importers/ImportGML.csx \
+            -s "UndertaleModTool/UndertaleModTool/Scripts/Resource Importers/ImportGML.csx" \
             -o output/game.droid
           # ImportGML.csx prompts for a folder path interactively in the GUI;
           # the CLI reads it from the UMT_IMPORT_FOLDER env var if your UMT
