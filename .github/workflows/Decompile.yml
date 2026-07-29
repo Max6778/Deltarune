@@ -65,7 +65,11 @@ jobs:
             # ScriptQuestion(), which reads from stdin. With no interactive stdin
             # in a runner, this loops forever re-prompting "Invalid input". Force
             # every such question to auto-answer "yes" so the script proceeds.
-            perl -0777 -pi -e 's/ScriptQuestion\(.*?\)/true/gs' "$SCRIPT"
+            # The lookahead requires the closing ) to be immediately followed by
+            # ; - this avoids stopping early on a ) that appears inside the
+            # prompt text itself (e.g. "...a separate folder.)").
+            perl -0777 -pi -e 's/ScriptQuestion\(.*?\)(?=\s*;)/true/gs' "$SCRIPT"
+            grep -n "= true;" "$SCRIPT" || true
           done
 
       - name: Run all exporters against game.droid
