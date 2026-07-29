@@ -1,0 +1,120 @@
+name: Decompile game.droid (full asset export)
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'assets/**/chapter1.wad'
+
+jobs:
+  decompile:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Clone UndertaleModTool (with submodules)
+        run: git clone --depth 1 --recurse-submodules --shallow-submodules https://github.com/UnderminersTeam/UndertaleModTool.git
+
+      - name: Build UndertaleModCli
+        run: dotnet build UndertaleModTool/UndertaleModCli/UndertaleModCli.csproj -c Release -o cli-build
+
+      - name: Find and extract chapter1.wad
+        id: find
+        run: |
+          WAD=$(find assets -type f -name "chapter1.wad" | head -n 1)
+          if [ -z "$WAD" ]; then
+            echo "No chapter1.wad found under assets/"
+            exit 1
+          fi
+          echo "Found $WAD, extracting (it's a plain zip archive)..."
+          mkdir -p extracted_chapter1
+          unzip -o "$WAD" -d extracted_chapter1
+
+          INNER_DROID=$(find extracted_chapter1 -type f -name "game.droid" | head -n 1)
+          if [ -z "$INNER_DROID" ]; then
+            echo "chapter1.wad did not contain a game.droid - check its contents"
+            find extracted_chapter1 -maxdepth 2
+            exit 1
+          fi
+          echo "path=$INNER_DROID" >> "$GITHUB_OUTPUT"
+
+      # Each exporter script normally asks (via a GUI dialog / stdin prompt) where
+      # to save its output, and some also ask Y/N confirmation questions. Neither
+      # works headless, so we patch every script to skip both kinds of prompts.
+      - name: Patch exporter scripts to skip interactive prompts
+        run: |
+          mkdir -p mod_export/code mod_export/sounds mod_export/sprites mod_export/backgrounds mod_export/fonts
+
+          declare -A SCRIPTS=(
+            ["UndertaleModTool/UndertaleModTool/Scripts/Resource Exporters/ExportAllCode.csx"]="mod_export/code"
+            ["UndertaleModTool/UndertaleModTool/Scripts/Resource Exporters/ExportAllSounds.csx"]="mod_export/sounds"
+            ["UndertaleModTool/UndertaleModTool/Scripts/Resource Exporters/ExportAllSprites.csx"]="mod_export/sprites"
+            ["UndertaleModTool/UndertaleModTool/Scripts/Resource Exporters/ExportAllTilesets.csx"]="mod_export/backgrounds"
+            ["UndertaleModTool/UndertaleModTool/Scripts/Resource Exporters/ExportAllFonts.csx"]="mod_export/fonts"
+          )
+
+          # ExportAllSounds.csx asks whether to also copy "external" audio files
+          # that live as separate .ogg files next to the data file. Since
+          # chapter1.wad is now extracted whole, those .ogg files sit right next
+          # to the inner game.droid, so every script can safely default to "yes".
+          declare -A ANSWERS=()
+
+          for SCRIPT in "${!SCRIPTS[@]}"; do
+            TARGET="$GITHUB_WORKSPACE/${SCRIPTS[$SCRIPT]}"
+            ANSWER="${ANSWERS[$SCRIPT]:-true}"
+            if [ ! -f "$SCRIPT" ]; then
+              echo "Missing script: $SCRIPT"
+              exit 1
+            fi
+            sed -i "s#PromptChooseDirectory()#\"$TARGET\"#g" "$SCRIPT"
+            if ! grep -q "$TARGET" "$SCRIPT"; then
+              echo "Patch did not apply to $SCRIPT - its PromptChooseDirectory() call may be named differently, check script contents"
+              exit 1
+            fi
+
+            # Some scripts (e.g. ExportAllSounds.csx) also ask a Y/N question via
+            # ScriptQuestion(), which reads from stdin. With no interactive stdin
+            # in a runner, this loops forever re-prompting "Invalid input". Force
+            # every such question to auto-answer per $ANSWER so the script proceeds.
+            # The lookahead requires the closing ) to be immediately followed by
+            # ; - this avoids stopping early on a ) that appears inside the
+            # prompt text itself (e.g. "...a separate folder.)").
+            perl -0777 -pi -e "s/ScriptQuestion\(.*?\)(?=\s*;)/$ANSWER/gs" "$SCRIPT"
+            grep -n "= $ANSWER;" "$SCRIPT" || true
+          done
+
+      - name: Run all exporters against game.droid
+        run: |
+          mkdir -p decompiled
+          dotnet cli-build/UndertaleModCli.dll load "${{ steps.find.outputs.path }}" \
+            -s "UndertaleModTool/UndertaleModTool/Scripts/Resource Exporters/ExportAllCode.csx" \
+            -s "UndertaleModTool/UndertaleModTool/Scripts/Resource Exporters/ExportAllSounds.csx" \
+            -s "UndertaleModTool/UndertaleModTool/Scripts/Resource Exporters/ExportAllSprites.csx" \
+            -s "UndertaleModTool/UndertaleModTool/Scripts/Resource Exporters/ExportAllTilesets.csx" \
+            -s "UndertaleModTool/UndertaleModTool/Scripts/Resource Exporters/ExportAllFonts.csx" \
+            -o decompiled/output.droid
+
+      - name: Verify exported output exists
+        run: |
+          EMPTY=0
+          for DIR in mod_export/code mod_export/sounds mod_export/sprites mod_export/backgrounds mod_export/fonts; do
+            if [ -z "$(ls -A "$DIR" 2>/dev/null)" ]; then
+              echo "Warning: $DIR is empty"
+              EMPTY=1
+            fi
+          done
+          if [ "$EMPTY" = "1" ]; then
+            echo "One or more exporters produced nothing - check the previous step's log for that script's errors"
+          fi
+
+      - name: Upload all exported assets as one artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: deltarune-mod-assets
+          path: mod_export/
