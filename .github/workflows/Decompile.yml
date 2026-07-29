@@ -49,8 +49,18 @@ jobs:
             ["UndertaleModTool/UndertaleModTool/Scripts/Resource Exporters/ExportAllFonts.csx"]="mod_export/fonts"
           )
 
+          # ExportAllSounds.csx asks whether to also copy "external" audio files
+          # that live as separate .ogg files next to the data file. We only have
+          # game.droid in this repo (not the full APK asset set), so that copy
+          # would fail looking for files that aren't there - answer "no" for it.
+          # Everything else defaults to "yes".
+          declare -A ANSWERS=(
+            ["UndertaleModTool/UndertaleModTool/Scripts/Resource Exporters/ExportAllSounds.csx"]="false"
+          )
+
           for SCRIPT in "${!SCRIPTS[@]}"; do
             TARGET="$GITHUB_WORKSPACE/${SCRIPTS[$SCRIPT]}"
+            ANSWER="${ANSWERS[$SCRIPT]:-true}"
             if [ ! -f "$SCRIPT" ]; then
               echo "Missing script: $SCRIPT"
               exit 1
@@ -64,12 +74,12 @@ jobs:
             # Some scripts (e.g. ExportAllSounds.csx) also ask a Y/N question via
             # ScriptQuestion(), which reads from stdin. With no interactive stdin
             # in a runner, this loops forever re-prompting "Invalid input". Force
-            # every such question to auto-answer "yes" so the script proceeds.
+            # every such question to auto-answer per $ANSWER so the script proceeds.
             # The lookahead requires the closing ) to be immediately followed by
             # ; - this avoids stopping early on a ) that appears inside the
             # prompt text itself (e.g. "...a separate folder.)").
-            perl -0777 -pi -e 's/ScriptQuestion\(.*?\)(?=\s*;)/true/gs' "$SCRIPT"
-            grep -n "= true;" "$SCRIPT" || true
+            perl -0777 -pi -e "s/ScriptQuestion\(.*?\)(?=\s*;)/$ANSWER/gs" "$SCRIPT"
+            grep -n "= $ANSWER;" "$SCRIPT" || true
           done
 
       - name: Run all exporters against game.droid
