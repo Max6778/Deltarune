@@ -39,7 +39,7 @@ jobs:
       # works headless, so we patch every script to skip both kinds of prompts.
       - name: Patch exporter scripts to skip interactive prompts
         run: |
-          mkdir -p mod_export/code mod_export/sounds mod_export/sprites mod_export/backgrounds mod_export/fonts
+          mkdir -p mod_export/code mod_export/sounds mod_export/sprites mod_export/backgrounds mod_export/fonts mod_export/strings mod_export/shaders mod_export/texture_pages
 
           declare -A SCRIPTS=(
             ["UndertaleModTool/UndertaleModTool/Scripts/Resource Exporters/ExportAllCode.csx"]="mod_export/code"
@@ -47,6 +47,9 @@ jobs:
             ["UndertaleModTool/UndertaleModTool/Scripts/Resource Exporters/ExportAllSprites.csx"]="mod_export/sprites"
             ["UndertaleModTool/UndertaleModTool/Scripts/Resource Exporters/ExportAllTilesets.csx"]="mod_export/backgrounds"
             ["UndertaleModTool/UndertaleModTool/Scripts/Resource Exporters/ExportAllFonts.csx"]="mod_export/fonts"
+            ["UndertaleModTool/UndertaleModTool/Scripts/Resource Exporters/ExportAllStrings.csx"]="mod_export/strings"
+            ["UndertaleModTool/UndertaleModTool/Scripts/Resource Exporters/ExportAllShaders.csx"]="mod_export/shaders"
+            ["UndertaleModTool/UndertaleModTool/Scripts/Resource Exporters/ExportAllEmbeddedTextures.csx"]="mod_export/texture_pages"
           )
 
           # ExportAllSounds.csx asks whether to also copy "external" audio files
@@ -91,12 +94,15 @@ jobs:
             -s "UndertaleModTool/UndertaleModTool/Scripts/Resource Exporters/ExportAllSprites.csx" \
             -s "UndertaleModTool/UndertaleModTool/Scripts/Resource Exporters/ExportAllTilesets.csx" \
             -s "UndertaleModTool/UndertaleModTool/Scripts/Resource Exporters/ExportAllFonts.csx" \
+            -s "UndertaleModTool/UndertaleModTool/Scripts/Resource Exporters/ExportAllStrings.csx" \
+            -s "UndertaleModTool/UndertaleModTool/Scripts/Resource Exporters/ExportAllShaders.csx" \
+            -s "UndertaleModTool/UndertaleModTool/Scripts/Resource Exporters/ExportAllEmbeddedTextures.csx" \
             -o decompiled/output.droid
 
       - name: Verify exported output exists
         run: |
           EMPTY=0
-          for DIR in mod_export/code mod_export/sounds mod_export/sprites mod_export/backgrounds mod_export/fonts; do
+          for DIR in mod_export/code mod_export/sounds mod_export/sprites mod_export/backgrounds mod_export/fonts mod_export/strings mod_export/shaders mod_export/texture_pages; do
             if [ -z "$(ls -A "$DIR" 2>/dev/null)" ]; then
               echo "Warning: $DIR is empty"
               EMPTY=1
@@ -111,3 +117,4 @@ jobs:
         with:
           name: deltarune-mod-assets
           path: mod_export/
+
