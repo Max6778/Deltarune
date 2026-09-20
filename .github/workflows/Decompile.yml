@@ -7,18 +7,17 @@ jobs:
     steps:
       - name: Get GDRE Tools
         run: |
-          curl -L -o gdre.zip https://github.com/Max6778/Deltarune/releases/download/Release/CC3Dport-1.4-HiRes.apk
+          curl -L -o gdre.zip https://github.com/GDRETools/gdsdecomp/releases/latest/download/GDRE_tools-linux.zip
           unzip gdre.zip -d gdre
 
-      - name: Upload your APK to the runner
-        uses: actions/upload-artifact@v4
-        # (or add the apk to the repo and checkout instead)
+      - name: Get the APK from Releases
+        run: curl -L -o game.apk https://github.com/Max6778/Deltarune/releases/download/Release/CC3Dport-1.4-HiRes.apk
 
       - name: Recover project
         run: |
           chmod +x gdre/gdre_tools
-          ./gdre/gdre_tools --headless --recover=CC3Dport-1_4-HiRes.apk --output-dir=recovered_project
-          # check ./gdre/gdre_tools --help if flag names differ in the current release
+          ./gdre/gdre_tools --headless --recover=game.apk --output-dir=recovered_project
+          # run `./gdre/gdre_tools --help` first if this flag name doesn't match the current release
 
       - name: Upload recovered project
         uses: actions/upload-artifact@v4
