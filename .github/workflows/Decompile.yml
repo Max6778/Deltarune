@@ -10,13 +10,9 @@ jobs:
 
       - name: Get GDRE Tools
         run: |
-          URL=$(curl -s https://api.github.com/repos/GDRETools/gdsdecomp/releases/latest \
-            | grep -i "browser_download_url.*linux" \
-            | cut -d '"' -f 4)
-          echo "Downloading: $URL"
-          curl -L -o gdre.zip "$URL"
+          curl -L -o gdre.zip https://github.com/GDRETools/gdsdecomp/releases/download/v2.6.4/GDRE_tools-v2.6.4-linux.zip
           unzip gdre.zip -d gdre
-          find gdre -type f
+          find gdre -type f 
 
       - name: Get the APK from Releases
         run: curl -L -o game.apk https://github.com/Max6778/Deltarune/releases/download/Release/CC3Dport-1.4-HiRes.apk
