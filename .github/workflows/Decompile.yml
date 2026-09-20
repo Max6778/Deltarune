@@ -5,19 +5,27 @@ jobs:
   decompile:
     runs-on: ubuntu-latest
     steps:
+      - name: List available GDRE releases (debug)
+        run: curl -s https://api.github.com/repos/GDRETools/gdsdecomp/releases/latest | grep "browser_download_url"
+
       - name: Get GDRE Tools
         run: |
-          curl -L -o gdre.zip https://github.com/GDRETools/gdsdecomp/releases/latest/download/GDRE_tools-linux.zip
+          URL=$(curl -s https://api.github.com/repos/GDRETools/gdsdecomp/releases/latest \
+            | grep -i "browser_download_url.*linux" \
+            | cut -d '"' -f 4)
+          echo "Downloading: $URL"
+          curl -L -o gdre.zip "$URL"
           unzip gdre.zip -d gdre
+          find gdre -type f
 
       - name: Get the APK from Releases
         run: curl -L -o game.apk https://github.com/Max6778/Deltarune/releases/download/Release/CC3Dport-1.4-HiRes.apk
 
       - name: Recover project
         run: |
-          chmod +x gdre/gdre_tools
-          ./gdre/gdre_tools --headless --recover=game.apk --output-dir=recovered_project
-          # run `./gdre/gdre_tools --help` first if this flag name doesn't match the current release
+          BIN=$(find gdre -type f -iname "gdre_tools*" -executable | head -1)
+          chmod +x "$BIN"
+          "$BIN" --headless --recover=game.apk --output=recovered_project
 
       - name: Upload recovered project
         uses: actions/upload-artifact@v4
