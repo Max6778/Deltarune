@@ -23,6 +23,7 @@ done
 echo "== launcher dex"
 mkdir -p work/cls work/dex
 javac --release 8 -Xlint:-options -cp "$AJAR" -d work/cls $(find launcher/src -name '*.java')
+mkdir -p work/dex
 "$BT/d8" --release --min-api 21 --lib "$AJAR" --output work/dex $(find work/cls -name '*.class')
 
 echo "== decode + patch"
