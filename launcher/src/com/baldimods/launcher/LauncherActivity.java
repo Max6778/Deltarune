@@ -26,6 +26,7 @@ public class LauncherActivity extends Activity {
     private File logcatFile;
     private File bepInExDir;
     private File pluginDir;
+    private boolean importedMtmApi;
 
     @Override protected void onCreate(Bundle b) {
         super.onCreate(b);
@@ -108,11 +109,20 @@ public class LauncherActivity extends Activity {
             for (int i = 0; i < data.getClipData().getItemCount(); i++) uris.add(data.getClipData().getItemAt(i).getUri());
         } else if (data.getData() != null) uris.add(data.getData());
         int ok = 0;
+        importedMtmApi = false;
         for (Uri u : uris) {
             try { importOne(u); ok++; } catch (Exception e) { status.setText("Import failed: " + e); }
         }
         if (ok > 0) status.setText("Imported " + ok + " item(s).");
         refresh();
+        if (importedMtmApi) {
+            new AlertDialog.Builder(this)
+                    .setTitle("API files imported")
+                    .setMessage("MTM101BaldAPI files were installed under BepInEx. This is the BepInEx 5 Mono API. "
+                            + "The current Android loader runs BepInEx 6 IL2CPP, so MTM101BaldAPI and its "
+                            + "serialization patcher cannot load until they are ported to IL2CPP.")
+                    .setPositiveButton("OK", null).show();
+        }
     }
 
     private void importOne(Uri u) throws IOException {
@@ -123,6 +133,11 @@ public class LauncherActivity extends Activity {
             boolean bepinexLayout;
             try { bepinexLayout = hasBepInExRoot(probe); }
             finally { probe.close(); }
+            if (bepinexLayout) {
+                probe = getContentResolver().openInputStream(u);
+                try { importedMtmApi |= hasEntry(probe, "MTM101BaldAPI.dll"); }
+                finally { probe.close(); }
+            }
             boolean dllArchive = false;
             if (!bepinexLayout) {
                 probe = getContentResolver().openInputStream(u);
@@ -145,6 +160,7 @@ public class LauncherActivity extends Activity {
                 }
             } finally { in.close(); }
         } else if (lower.endsWith(".dll")) {
+            if (lower.equals("mtm101baldapi.dll")) importedMtmApi = true;
             pluginDir.mkdirs();
             InputStream in = getContentResolver().openInputStream(u);
             try { copy(in, new FileOutputStream(new File(pluginDir, name))); }
@@ -173,6 +189,16 @@ public class LauncherActivity extends Activity {
         int scanned = 0;
         while ((entry = zip.getNextEntry()) != null && scanned++ < 2048) {
             if (!entry.isDirectory() && entry.getName().toLowerCase(Locale.ROOT).endsWith(".dll")) return true;
+        }
+        return false;
+    }
+
+    private static boolean hasEntry(InputStream in, String suffix) throws IOException {
+        ZipInputStream zip = new ZipInputStream(in);
+        ZipEntry entry;
+        int scanned = 0;
+        while ((entry = zip.getNextEntry()) != null && scanned++ < 4096) {
+            if (!entry.isDirectory() && entry.getName().endsWith(suffix)) return true;
         }
         return false;
     }
