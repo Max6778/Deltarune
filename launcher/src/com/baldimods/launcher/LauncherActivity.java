@@ -20,6 +20,7 @@ public class LauncherActivity extends Activity {
     private File modsDir;
     private ListView list;
     private TextView status;
+    private CheckBox noLoader;
 
     @Override protected void onCreate(Bundle b) {
         super.onCreate(b);
@@ -46,6 +47,11 @@ public class LauncherActivity extends Activity {
         imp.setText("Import mods (.so or .zip)");
         imp.setOnClickListener(new View.OnClickListener() { public void onClick(View v) { pick(); } });
         root.addView(imp);
+
+        noLoader = new CheckBox(this);
+        noLoader.setText("Test: start game WITHOUT the mod loader");
+        noLoader.setChecked(getSharedPreferences("bb", 0).getBoolean("noloader", false));
+        root.addView(noLoader);
 
         status = new TextView(this);
         status.setText("Mods folder: " + modsDir.getAbsolutePath() + "\nLong-press a mod to delete it.");
@@ -147,11 +153,15 @@ public class LauncherActivity extends Activity {
     }
 
     private void play() {
-        try {
-            System.loadLibrary("modloader");
-            NativeLoader.start(modsDir.getAbsolutePath(), getFilesDir().getAbsolutePath());
-        } catch (Throwable t) {
-            status.setText("Mod loader failed to start: " + t + "\nStarting the game without mods.");
+        boolean skip = noLoader.isChecked();
+        getSharedPreferences("bb", 0).edit().putBoolean("noloader", skip).apply();
+        if (!skip) {
+            try {
+                System.loadLibrary("modloader");
+                NativeLoader.start(modsDir.getAbsolutePath(), getFilesDir().getAbsolutePath());
+            } catch (Throwable t) {
+                status.setText("Mod loader failed to start: " + t + "\nStarting the game without mods.");
+            }
         }
         Intent i = new Intent();
         i.setClassName(getPackageName(), GAME);
