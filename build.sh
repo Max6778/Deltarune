@@ -21,7 +21,7 @@ done
 "$TC/armv7a-linux-androideabi24-clang++" -shared -fPIC -O2 -std=c++17 -Inative -o out/hello.armeabi-v7a.so examples/hello/hello.cpp -ldl
 
 echo "== launcher dex"
-mkdir -p work/cls
+mkdir -p work/cls work/dex
 javac --release 8 -Xlint:-options -cp "$AJAR" -d work/cls $(find launcher/src -name '*.java')
 "$BT/d8" --release --min-api 21 --lib "$AJAR" --output work/dex $(find work/cls -name '*.class')
 
