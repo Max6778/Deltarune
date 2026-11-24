@@ -11,6 +11,8 @@ import android.view.Gravity;
 import android.view.View;
 import android.widget.*;
 import android.app.AlertDialog;
+import com.bepinex.android.tools.FusionConfig;
+import com.bepinex.android.tools.NativeLibraryManager;
 import java.io.*;
 import java.util.*;
 import java.util.zip.*;
