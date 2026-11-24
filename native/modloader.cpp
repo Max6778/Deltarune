@@ -8,7 +8,6 @@
 #include <sys/stat.h>
 #include <stdio.h>
 #include <string.h>
-#include <stdlib.h>
 #include <stdarg.h>
 #include <atomic>
 #include <string>
@@ -24,13 +23,12 @@
 #endif
 
 static std::string g_mods, g_internal, g_logPath;
-static int g_delay_ms = 10000; // time to leave the VM alone after libil2cpp.so appears (override: mods/loader_delay_ms.txt)
 
 static void logf(const char* fmt, ...) {
     char buf[1024];
     va_list ap; va_start(ap, fmt); vsnprintf(buf, sizeof buf, fmt, ap); va_end(ap);
     __android_log_print(ANDROID_LOG_INFO, "BBModLoader", "%s", buf);
-    if (FILE* f = fopen(g_logPath.c_str(), "a")) { fprintf(f, "%s\n", buf); fflush(f); fsync(fileno(f)); fclose(f); }
+    if (FILE* f = fopen(g_logPath.c_str(), "a")) { fprintf(f, "%s\n", buf); fclose(f); }
 }
 static void mod_log(const char* msg) { logf("[mod] %s", msg ? msg : "(null)"); }
 
@@ -95,23 +93,14 @@ static void load_mods(const BBModContext& ctx) {
 }
 
 static void* worker(void*) {
-    {   // optional delay override
-        std::string cfg = g_mods + "/loader_delay_ms.txt";
-        if (FILE* f = fopen(cfg.c_str(), "r")) { int v = 0; if (fscanf(f, "%d", &v) == 1 && v >= 0) g_delay_ms = v; fclose(f); }
-    }
-    logf("step: waiting for libil2cpp.so");
     void* h = nullptr;
     for (int i = 0; i < 1200 && !h; i++) { h = dlopen("libil2cpp.so", RTLD_NOW | RTLD_NOLOAD); if (!h) usleep(100000); }
     if (!h) { logf("libil2cpp.so never appeared"); return nullptr; }
-    logf("step: libil2cpp.so loaded; leaving the VM alone for %d ms", g_delay_ms);
-    usleep((useconds_t)g_delay_ms * 1000);
-
     typedef void* (*domain_get_t)();
     typedef void* (*thread_attach_t)(void*);
     typedef void** (*get_assemblies_t)(void*, size_t*);
     typedef void* (*asm_image_t)(void*);
     typedef const char* (*image_name_t)(void*);
-    logf("step: resolving il2cpp symbols");
     auto domain_get = (domain_get_t)dlsym(h, "il2cpp_domain_get");
     auto thread_attach = (thread_attach_t)dlsym(h, "il2cpp_thread_attach");
     auto get_asms = (get_assemblies_t)dlsym(h, "il2cpp_domain_get_assemblies");
@@ -119,25 +108,34 @@ static void* worker(void*) {
     auto image_name = (image_name_t)dlsym(h, "il2cpp_image_get_name");
     if (!domain_get || !thread_attach || !get_asms || !asm_image || !image_name) { logf("il2cpp API symbols missing"); return nullptr; }
 
-    logf("step: il2cpp_domain_get");
     void* dom = nullptr;
     for (int i = 0; i < 1200 && !dom; i++) { dom = domain_get(); if (!dom) usleep(100000); }
     if (!dom) { logf("il2cpp domain never became available"); return nullptr; }
-    logf("step: il2cpp_thread_attach (domain %p)", dom);
     thread_attach(dom);
 
-    logf("step: waiting for Assembly-CSharp");
     bool ready = false;
     for (int i = 0; i < 600 && !ready; i++) {
         size_t n = 0; void** as = get_asms(dom, &n);
         for (size_t k = 0; k < n && !ready; k++) {
-            const char* nm = image_name(asm_image(as[k]));
+            void* image = asm_image(as[k]);
+            const char* nm = image ? image_name(image) : nullptr;
             if (nm && strcmp(nm, "Assembly-CSharp.dll") == 0) ready = true;
         }
         if (!ready) usleep(100000);
     }
     uintptr_t base = find_base("libil2cpp.so");
-    logf("step: ready=%d base=0x%lx, loading mods", (int)ready, (unsigned long)base);
+    logf("il2cpp ready=%d, base=0x%lx", (int)ready, (unsigned long)base);
+    // Never call plugin code until the game's assemblies are available. Mods
+    // commonly resolve game classes during mod_init, so timing out here must
+    // fail closed instead of invoking them against a half-started runtime.
+    if (!ready) {
+        logf("Assembly-CSharp.dll never became available; skipping mod load");
+        return nullptr;
+    }
+    if (!base) {
+        logf("could not determine libil2cpp.so load base; skipping mod load");
+        return nullptr;
+    }
     BBModContext ctx;
     ctx.api_version = BBMOD_API_VERSION;
     ctx.il2cpp_handle = h;
@@ -146,7 +144,6 @@ static void* worker(void*) {
     ctx.mods_dir = g_mods.c_str();
     ctx.log = mod_log;
     load_mods(ctx);
-    logf("step: done");
     return nullptr;
 }
 
@@ -156,7 +153,7 @@ Java_com_baldimods_launcher_NativeLoader_start(JNIEnv* env, jclass, jstring jmod
     if (started.exchange(true)) return;
     const char* a = env->GetStringUTFChars(jmods, nullptr); g_mods = a; env->ReleaseStringUTFChars(jmods, a);
     const char* b = env->GetStringUTFChars(jint, nullptr);  g_internal = b; env->ReleaseStringUTFChars(jint, b);
-    g_logPath = g_mods + "/../modloader.log";
+    g_logPath = g_internal + "/modloader.log";
     remove(g_logPath.c_str());
     logf("modloader start, mods=%s", g_mods.c_str());
     pthread_t t; pthread_create(&t, nullptr, worker, nullptr); pthread_detach(t);

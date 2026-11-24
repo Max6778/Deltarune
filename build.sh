@@ -21,16 +21,32 @@ done
 "$TC/armv7a-linux-androideabi24-clang++" -shared -fPIC -O2 -std=c++17 -Inative -o out/hello.armeabi-v7a.so examples/hello/hello.cpp -ldl
 
 echo "== launcher dex"
-mkdir -p work/cls work/dex
+mkdir -p work/cls
 javac --release 8 -Xlint:-options -cp "$AJAR" -d work/cls $(find launcher/src -name '*.java')
-mkdir -p work/dex
 "$BT/d8" --release --min-api 21 --lib "$AJAR" --output work/dex $(find work/cls -name '*.class')
 
 echo "== decode + patch"
 java -jar apktool.jar d -f -o work/dec "$BASE"
 python3 tools/inject.py work/dec "$NEWPKG"
 python3 tools/fixres.py work/dec
+# Embed the reference launcher's BepInEx 6/IL2CPP core and CoreCLR payload.
+mkdir -p work/dec/assets
+cp launcher/assets/BepInEx.Android.zip launcher/assets/dotnet.zip work/dec/assets/
 java -jar apktool.jar b -o work/unsigned.apk work/dec
+
+echo "== build Android IL2CPP bootstrap (arm64 only)"
+cmake -S native -B work/bepinex-cmake \
+  -DCMAKE_TOOLCHAIN_FILE="$NDK/build/cmake/android.toolchain.cmake" \
+  -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-28 \
+  -DANDROID_STL=c++_static -DCMAKE_BUILD_TYPE=Release
+cmake --build work/bepinex-cmake --parallel
+cp work/bepinex-cmake/out/libmain.so work/libs/lib/arm64-v8a/libmain.so
+cp work/bepinex-cmake/out/libnextbep.so work/libs/lib/arm64-v8a/
+cp native/jniLibs/arm64-v8a/*.so work/libs/lib/arm64-v8a/
+# Remove Unity's original libmain so the BepInEx shim registers NativeLoader.
+if unzip -Z1 work/unsigned.apk | grep -qx "lib/arm64-v8a/libmain.so"; then
+  zip -q -d work/unsigned.apk lib/arm64-v8a/libmain.so
+fi
 
 echo "== add dex + native libs (stored, uncompressed)"
 N=2; while unzip -Z1 work/unsigned.apk | grep -qx "classes$N.dex"; do N=$((N+1)); done
